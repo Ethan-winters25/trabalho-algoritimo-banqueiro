@@ -4,7 +4,6 @@
     {"nome": "A", "possui": 1, "maximo": 6}, 
     {"nome": "B", "possui": 1, "maximo": 5}, 
     {"nome": "C", "possui": 2, "maximo": 4}, 
-    {"nome": "E", "possui": 2, "maximo": 4}, 
     {"nome": "D", "possui": 4, "maximo": 7} 
   ] 
 }
