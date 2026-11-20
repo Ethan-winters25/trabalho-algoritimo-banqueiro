@@ -1,8 +1,9 @@
 import json
+import copy
 from pathlib import Path
 
 
-def ler_input(caminho: Path):
+def ler_input(caminho: Path) -> tuple[int, list[dict]]:
     with open(caminho, "r", encoding="utf-8") as arquivo:
         dados = json.load(arquivo)
 
@@ -57,6 +58,62 @@ def executar_arquivos(caminho_json: Path, caminho_req: Path) -> None:
     # TODO: Implementar execução a partir dos arquivos de entrada e requisições
     pass
 
+
+def executar_testes() -> None:
+    """Executa os casos de teste obrigatórios T1 a T5."""
+    total = 10
+
+    # T1
+    t1 = [
+        {"nome": "A", "possui": 0, "maximo": 6},
+        {"nome": "B", "possui": 0, "maximo": 5},
+        {"nome": "C", "possui": 0, "maximo": 4},
+        {"nome": "D", "possui": 0, "maximo": 7},
+    ]
+    assert calcular_disponivel(total, t1) == 10
+    seguro, seq = esta_seguro(total, t1)
+    assert seguro is True
+    print(f"T1: Seguro (sequência: {', '.join(seq)})")
+
+    # T2
+    t2 = [
+        {"nome": "A", "possui": 1, "maximo": 6},
+        {"nome": "B", "possui": 1, "maximo": 5},
+        {"nome": "C", "possui": 2, "maximo": 4},
+        {"nome": "D", "possui": 4, "maximo": 7},
+    ]
+    assert calcular_disponivel(total, t2) == 2
+    seguro, seq = esta_seguro(total, t2)
+    assert seguro is True and seq == ["C", "D", "A", "B"]
+    print(f"T2: Seguro (sequência: {', '.join(seq)})")
+
+    # T3
+    t3 = [
+        {"nome": "A", "possui": 1, "maximo": 6},
+        {"nome": "B", "possui": 2, "maximo": 5},
+        {"nome": "C", "possui": 2, "maximo": 4},
+        {"nome": "D", "possui": 4, "maximo": 7},
+    ]
+    assert calcular_disponivel(total, t3) == 1
+    seguro, _ = esta_seguro(total, t3)
+    assert seguro is False
+    print("T3: Inseguro")
+
+    # T4 (Estado do T2, requisição: B pede 1)
+    t4 = copy.deepcopy(t2)
+    concedida, msg = solicitar_recurso(total, t4, "B", 1)
+    assert concedida is False
+    assert calcular_disponivel(total, t4) == 2  # Garante que houve rollback
+    print(f"T4: REQ B 1 -> {msg}")
+
+    # T5 (Estado do T2, requisição: C pede 2)
+    t5 = copy.deepcopy(t2)
+    concedida, msg = solicitar_recurso(total, t5, "C", 2)
+    assert concedida is True
+    assert "C, D, A, B" in msg
+    print(f"T5: REQ C 2 -> {msg}")
+
+    print("\nTodos os testes T1 a T5 passaram com sucesso!")
 
 def main():
     total, processos = ler_input(Path("entradas.json"))
