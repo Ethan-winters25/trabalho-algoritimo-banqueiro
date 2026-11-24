@@ -1,0 +1,36 @@
+=== SAÍDAS ESPERADAS DOS CASOS DE TESTE ===
+
+--- VERSÃO 1: ALGORITMO DO BANQUEIRO (OBRIGATÓRIOS - SLIDE 73) ---
+
+[T1] Entrada: testes/t1.json
+Disponível calculado: 10
+Resultado esperado: Seguro (sequência: A, B, C, D)
+
+[T2] Entrada: testes/t2.json
+Disponível calculado: 2
+Resultado esperado: Seguro (sequência: C, D, A, B)
+
+[T3] Entrada: testes/t3.json
+Disponível calculado: 1
+Resultado esperado: Inseguro (não há sequência segura)
+
+[T4] Entrada: testes/t2.json + testes/req_t4.txt (REQ B 1) [Versão 1]
+Disponível inicial: 2
+Resultado esperado: REQ B 1 -> NEGADA (estado resultante inseguro)
+
+[T5] Entrada: testes/t2.json + testes/req_t5.txt (REQ C 2) [Versão 1]
+Disponível inicial: 2
+Resultado esperado: REQ C 2 -> CONCEDIDA (sequência segura: C, D, A, B)
+
+--- VERSÃO 2: ALOCAÇÃO INGÊNUA / FCFS (DEMONSTRAÇÃO DE DEADLOCK) ---
+
+[T6] Entrada: testes/t2.json + testes/req_t4.txt (REQ B 1) [Versão 2 - FCFS]
+Disponível inicial: 2
+Resultado esperado: REQ B 1 -> CONCEDIDA SEM VERIFICAÇÃO (FCFS) | Disponível: 1 (ATENÇÃO: sistema entrou em ESTADO INSEGURO!)
+
+[T7] Entrada: testes/t2.json + testes/req_v2_deadlock.txt [Versão 2 - FCFS]
+Disponível inicial: 2
+Resultado esperado:
+- REQ B 1 -> CONCEDIDA SEM VERIFICAÇÃO (entra em estado inseguro, disponível = 1)
+- REQ C 2, REQ D 3, REQ A 5, REQ B 3 -> BLOQUEADOS
+- Diagnóstico Final: DEADLOCK DETECTADO! Processos bloqueados permanentemente: [A, B, C, D].

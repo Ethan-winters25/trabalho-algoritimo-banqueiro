@@ -1,0 +1,8 @@
+# Sequência para demonstrar a diferença entre Versão 1 (Banqueiro) e Versão 2 (FCFS)
+# Na Versão 2, REQ B 1 é aceita indevidamente, reduz o cofre para 1 (estado T3)
+# e todas as requisições seguintes ficam bloqueadas em DEADLOCK.
+REQ B 1
+REQ C 2
+REQ D 3
+REQ A 5
+REQ B 3
