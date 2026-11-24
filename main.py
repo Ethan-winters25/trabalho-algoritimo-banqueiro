@@ -1,3 +1,21 @@
+"""
+Trabalho 3 - Simulador do Algoritmo do Banqueiro (Versão 1 e Versão 2)
+Disciplina: Sistemas Operacionais
+
+Versão 1: Algoritmo do Banqueiro (Dijkstra, 1965) - evita impasses verificando
+          se o estado resultante permanece seguro antes de conceder recursos.
+Versão 2: Alocação Ingênua / FCFS (First-Come, First-Served) - concede qualquer
+          requisição que caiba no saldo disponível no momento, sem verificar
+          segurança, demonstrando como o sistema entra em estado inseguro e
+          pode chegar a deadlock.
+
+Por que FCFS? É o oposto mais simples e didático do Banqueiro: atende por ordem
+de chegada ("tem no cofre, entrega") e não faz nenhum teste de segurança. Sobre
+a mesma entrada do T4, o Banqueiro nega REQ B 1 e preserva o sistema, enquanto o
+FCFS concede, reduz o disponível para 1 e permite que todos os processos fiquem
+bloqueados em deadlock.
+"""
+
 import json
 import copy
 from pathlib import Path
@@ -61,6 +79,190 @@ def executar_arquivos(caminho_json: Path, caminho_req: Path) -> None:
     pass
 
 
+def solicitar_recurso_fcfs(
+    total: int,
+    processos: list[dict],
+    nome_processo: str,
+    quantidade: int,
+    bloqueados: set[str],
+) -> tuple[bool, str]:
+    """
+    Versão 2 - Alocação Ingênua / FCFS (First-Come, First-Served).
+
+    Atende imediatamente qualquer pedido que caiba no saldo disponível no
+    instante, sem verificar se o estado resultante é seguro. Se faltar recurso,
+    o processo fica bloqueado aguardando liberação. É justamente essa ausência
+    de verificação que permite ao sistema entrar em estado inseguro e evoluir
+    para um deadlock.
+    """
+    processo = next((p for p in processos if p["nome"] == nome_processo), None)
+    if processo is None:
+        return False, (
+            f"REQ {nome_processo} {quantidade} -> ERRO "
+            f"(processo '{nome_processo}' não existe)"
+        )
+
+    necessidade = processo["maximo"] - processo["possui"]
+
+    if quantidade <= 0:
+        return False, f"REQ {nome_processo} {quantidade} -> ERRO (quantidade inválida)"
+    if quantidade > necessidade:
+        return False, (
+            f"REQ {nome_processo} {quantidade} -> ERRO "
+            "(excede o máximo declarado)"
+        )
+
+    disponivel = calcular_disponivel(total, processos)
+
+    if quantidade <= disponivel:
+        processo["possui"] += quantidade
+        bloqueados.discard(nome_processo)
+
+        # Se o processo atingiu seu máximo, conclui e devolve todos os recursos.
+        if processo["possui"] == processo["maximo"]:
+            liberado = processo["possui"]
+            processo["possui"] = 0
+            processo["maximo"] = 0
+            return True, (
+                f"REQ {nome_processo} {quantidade} -> CONCEDIDA (FCFS) | "
+                f"Processo {nome_processo} concluiu e liberou {liberado} recursos "
+                f"(disponível: {calcular_disponivel(total, processos)})"
+            )
+
+        seguro, _ = esta_seguro(total, processos)
+        alerta = (
+            "ATENÇÃO: sistema entrou em ESTADO INSEGURO!"
+            if not seguro
+            else "estado ainda seguro"
+        )
+        return True, (
+            f"REQ {nome_processo} {quantidade} -> CONCEDIDA SEM VERIFICAÇÃO (FCFS) | "
+            f"Disponível: {calcular_disponivel(total, processos)} ({alerta})"
+        )
+
+    bloqueados.add(nome_processo)
+    return False, (
+        f"REQ {nome_processo} {quantidade} -> BLOQUEADO (processo {nome_processo} "
+        f"aguarda {quantidade}, mas disponível = {disponivel})"
+    )
+
+
+def verificar_deadlock_fcfs(
+    total: int, processos: list[dict], bloqueados: set[str]
+) -> tuple[bool, str]:
+    """
+    Verifica se a Versão 2 chegou a um deadlock: todos os processos ativos
+    ficaram bloqueados e nenhum consegue atingir seu máximo com o saldo atual.
+    """
+    ativos = [p for p in processos if p["maximo"] > 0]
+    if not ativos:
+        return False, "Todos os processos concluíram sem deadlock."
+
+    disponivel = calcular_disponivel(total, processos)
+    todos_bloqueados = all(p["nome"] in bloqueados for p in ativos)
+    nenhum_pode_terminar = all(
+        (p["maximo"] - p["possui"]) > disponivel for p in ativos
+    )
+
+    if todos_bloqueados and nenhum_pode_terminar:
+        nomes = ", ".join(p["nome"] for p in ativos)
+        return True, (
+            f"DEADLOCK DETECTADO! Processos bloqueados permanentemente: [{nomes}]. "
+            f"Disponível no cofre = {disponivel}, insuficiente para qualquer "
+            "processo finalizar."
+        )
+    if nenhum_pode_terminar:
+        return False, (
+            f"Sistema em ESTADO INSEGURO (disponível = {disponivel}); "
+            "se os processos pedirem o restante de seus máximos, ocorrerá deadlock."
+        )
+    return False, "Sistema ainda possui processos capazes de concluir."
+
+
+def exibir_resumo_estado(total: int, processos: list[dict]) -> None:
+    """Imprime uma tabela com o estado atual do sistema."""
+    disponivel = calcular_disponivel(total, processos)
+    print("-" * 64)
+    print(f"Total: {total} | Disponível: {disponivel}")
+    print("-" * 64)
+    print(f"{'Processo':<10} | {'Possui':<8} | {'Máximo':<8} | {'Necessidade':<12}")
+    print("-" * 64)
+    for p in processos:
+        necessidade = p["maximo"] - p["possui"]
+        print(
+            f"{p['nome']:<10} | {p['possui']:<8} | {p['maximo']:<8} | "
+            f"{necessidade:<12}"
+        )
+    print("-" * 64)
+
+
+def executar_requisicoes_fcfs(
+    total: int, processos: list[dict], requisicoes: list[tuple[str, int]]
+) -> set[str]:
+    """Processa uma sequência de requisições na Versão 2 e retorna os bloqueados."""
+    bloqueados: set[str] = set()
+    for nome, quantidade in requisicoes:
+        _, mensagem = solicitar_recurso_fcfs(
+            total, processos, nome, quantidade, bloqueados
+        )
+        print(mensagem)
+    return bloqueados
+
+
+def executar_comparacao() -> None:
+    """
+    Compara as duas versões sobre o mesmo estado (t2.json) e a mesma sequência
+    de requisições (req_v2_deadlock.txt).
+
+    A Versão 1 nega o pedido que levaria ao estado inseguro e preserva o
+    sistema. A Versão 2 (FCFS) concede o mesmo pedido sem verificação, reduz o
+    disponível e termina em deadlock.
+    """
+    requisicoes_t4 = ler_requisicoes(TESTES_DIR / "req_t4.txt")
+    requisicoes_deadlock = ler_requisicoes(TESTES_DIR / "req_v2_deadlock.txt")
+
+    print("=" * 64)
+    print("VERSÃO 1 - ALGORITMO DO BANQUEIRO (COM PREVENÇÃO)")
+    print("=" * 64)
+    total_v1, processos_v1 = ler_input(TESTES_DIR / "t2.json")
+    exibir_resumo_estado(total_v1, processos_v1)
+    print("--- Requisições: testes/req_v2_deadlock.txt ---")
+    for nome, quantidade in requisicoes_deadlock:
+        _, mensagem = solicitar_recurso(total_v1, processos_v1, nome, quantidade)
+        print(mensagem)
+
+    print()
+    print("=" * 64)
+    print("VERSÃO 2 - ALOCAÇÃO INGÊNUA / FCFS (SEM PREVENÇÃO)")
+    print("Concede por ordem de chegada se houver saldo; não testa segurança.")
+    print("=" * 64)
+
+    # T6: o mesmo pedido do T4, agora concedido sem verificação de segurança.
+    print(">>> T6: estado do T2 + REQ B 1")
+    total_t6, processos_t6 = ler_input(TESTES_DIR / "t2.json")
+    exibir_resumo_estado(total_t6, processos_t6)
+    bloqueados_t6 = executar_requisicoes_fcfs(
+        total_t6, processos_t6, requisicoes_t4
+    )
+    _, diagnostico_t6 = verificar_deadlock_fcfs(
+        total_t6, processos_t6, bloqueados_t6
+    )
+    print(f"Diagnóstico (T6): {diagnostico_t6}")
+
+    # T7: sequência completa que leva todos os processos ao deadlock.
+    print()
+    print(">>> T7: estado do T2 + sequência completa de testes/req_v2_deadlock.txt")
+    total_t7, processos_t7 = ler_input(TESTES_DIR / "t2.json")
+    exibir_resumo_estado(total_t7, processos_t7)
+    bloqueados_t7 = executar_requisicoes_fcfs(
+        total_t7, processos_t7, requisicoes_deadlock
+    )
+    _, diagnostico_t7 = verificar_deadlock_fcfs(
+        total_t7, processos_t7, bloqueados_t7
+    )
+    print(f"Diagnóstico (T7): {diagnostico_t7}")
+
+
 def executar_testes() -> None:
     """Executa os casos de teste obrigatórios T1 a T5."""
     # T1
@@ -106,16 +308,16 @@ def executar_testes() -> None:
 
 
 def main():
-    total, processos = ler_input(TESTES_DIR / "t2.json")
-    reqs = ler_requisicoes(TESTES_DIR / "req_t4.txt")
+    print("************************************************************")
+    print("  VERSÃO 1: ALGORITMO DO BANQUEIRO (TESTES T1 A T5)")
+    print("************************************************************")
+    executar_testes()
 
-    print(total)      # 10
-    print(processos)  # Lista de processos
-
-    for nome, qtd in reqs:
-        #_, mensagem = solicitar_recurso(total, processos, nome, qtd)
-        # TODO: solicitar recurso impl
-        print(f"REQ {nome} {qtd}")
+    print()
+    print("************************************************************")
+    print("  VERSÃO 2: ALOCAÇÃO INGÊNUA / FCFS (COMPARAÇÃO)")
+    print("************************************************************")
+    executar_comparacao()
 
 
 if __name__ == "__main__":
