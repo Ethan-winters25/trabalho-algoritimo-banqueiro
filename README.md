@@ -88,10 +88,19 @@ Sobre a mesma entrada do **T4** (`testes/t2.json` + `REQ B 1`):
 | `executar_comparacao` | Compara as duas versões sobre o mesmo estado e as mesmas requisições. |
 | `executar_testes` | Executa os casos obrigatórios T1 a T5 da Versão 1. |
 
+### Estilização (`estilo.py`)
+
+| Função | Responsabilidade |
+| :--- | :--- |
+| `estilizar` | Aplica cor e/ou negrito a um texto quando o terminal suporta ANSI. |
+| `colorir_status` | Destaca automaticamente os status das mensagens (`CONCEDIDA`, `NEGADA`, `BLOQUEADO`, `INSEGURO`, `DEADLOCK DETECTADO` etc.). |
+| `imprimir_secao` | Imprime cabeçalhos de seção em negrito e ciano. |
+
 ## Estrutura do projeto
 
 ```text
 main.py                      # leitura, algoritmo do banqueiro, FCFS e testes
+estilo.py                    # cores ANSI, negrito e cabeçalhos do terminal
 testes/
   t1.json                    # T1: todos os processos sem recursos
   t2.json                    # T2: estado parcialmente alocado
@@ -119,6 +128,24 @@ O programa executa:
 Para processar um par específico de arquivos (estado + requisições) pela Versão
 1, use `executar_arquivos` conforme o exemplo da seção
 [Versão 1 – Execução a partir de arquivos](#execução-a-partir-de-arquivos).
+
+## Saída colorida
+
+A estilização fica isolada em `estilo.py` e é aplicada somente na impressão; as
+funções de lógica continuam retornando texto puro. As cores seguem o significado
+de cada status:
+
+- **verde + negrito:** `CONCEDIDA` e estados seguros;
+- **vermelho + negrito:** `NEGADA`, `ERRO`, `INSEGURO` e `DEADLOCK DETECTADO`;
+- **amarelo + negrito:** `BLOQUEADO` e avisos de `ATENÇÃO`;
+- **ciano + negrito:** títulos de seção e marcadores de teste;
+- **negrito:** cabeçalhos da tabela e linha de total/disponível;
+- **azul:** linhas separadoras da tabela.
+
+As cores são ativadas automaticamente quando a saída é um terminal compatível.
+Para desativar, defina `NO_COLOR=1`; para forçar as cores mesmo em saídas
+redirecionadas (útil em logs), defina `FORCE_COLOR=1`. `NO_COLOR` tem
+precedência sobre `FORCE_COLOR`.
 
 ## Casos de teste
 

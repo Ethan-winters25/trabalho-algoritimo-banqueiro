@@ -16,9 +16,21 @@ FCFS concede, reduz o disponível para 1 e permite que todos os processos fiquem
 bloqueados em deadlock.
 """
 
-import json
 import copy
+import json
 from pathlib import Path
+
+from estilo import (
+    AMARELO,
+    AZUL,
+    CIANO,
+    NEGRITO,
+    VERDE,
+    VERMELHO,
+    colorir_status,
+    estilizar,
+    imprimir_secao,
+)
 
 TESTES_DIR = Path(__file__).resolve().parent / "testes"
 
@@ -144,23 +156,27 @@ def executar_arquivos(caminho_json: Path, caminho_req: Path) -> None:
     validar_estado(total, processos)
     requisicoes = ler_requisicoes(caminho_req)
 
-    print(f"Arquivo de estado: {caminho_json}")
-    print(f"Arquivo de requisições: {caminho_req}")
+    print(estilizar(f"Arquivo de estado: {caminho_json}", NEGRITO))
+    print(estilizar(f"Arquivo de requisições: {caminho_req}", NEGRITO))
     exibir_resumo_estado(total, processos)
 
     seguro, sequencia = esta_seguro(total, processos)
     if seguro:
-        print(f"Estado inicial: SEGURO (sequência segura: {', '.join(sequencia)})")
+        print(
+            colorir_status(
+                f"Estado inicial: SEGURO (sequência segura: {', '.join(sequencia)})"
+            )
+        )
     else:
-        print("Estado inicial: INSEGURO (não há sequência segura)")
+        print(colorir_status("Estado inicial: INSEGURO (não há sequência segura)"))
 
-    print("--- Processando requisições ---")
+    print(estilizar("--- Processando requisições ---", NEGRITO, CIANO))
     for nome, quantidade in requisicoes:
         _, mensagem = solicitar_recurso(total, processos, nome, quantidade)
-        print(mensagem)
+        print(colorir_status(mensagem))
 
     print()
-    print("--- Estado final ---")
+    print(estilizar("--- Estado final ---", NEGRITO, CIANO))
     exibir_resumo_estado(total, processos)
 
 
@@ -267,18 +283,25 @@ def verificar_deadlock_fcfs(
 def exibir_resumo_estado(total: int, processos: list[dict]) -> None:
     """Imprime uma tabela com o estado atual do sistema."""
     disponivel = calcular_disponivel(total, processos)
-    print("-" * 64)
-    print(f"Total: {total} | Disponível: {disponivel}")
-    print("-" * 64)
-    print(f"{'Processo':<10} | {'Possui':<8} | {'Máximo':<8} | {'Necessidade':<12}")
-    print("-" * 64)
+    separador = estilizar("-" * 64, AZUL)
+    print(separador)
+    print(estilizar(f"Total: {total} | Disponível: {disponivel}", NEGRITO))
+    print(separador)
+    print(
+        estilizar(
+            f"{'Processo':<10} | {'Possui':<8} | {'Máximo':<8} | "
+            f"{'Necessidade':<12}",
+            NEGRITO,
+        )
+    )
+    print(separador)
     for p in processos:
         necessidade = p["maximo"] - p["possui"]
         print(
             f"{p['nome']:<10} | {p['possui']:<8} | {p['maximo']:<8} | "
             f"{necessidade:<12}"
         )
-    print("-" * 64)
+    print(separador)
 
 
 def executar_requisicoes_fcfs(
@@ -290,7 +313,7 @@ def executar_requisicoes_fcfs(
         _, mensagem = solicitar_recurso_fcfs(
             total, processos, nome, quantidade, bloqueados
         )
-        print(mensagem)
+        print(colorir_status(mensagem))
     return bloqueados
 
 
@@ -306,24 +329,26 @@ def executar_comparacao() -> None:
     requisicoes_t4 = ler_requisicoes(TESTES_DIR / "req_t4.txt")
     requisicoes_deadlock = ler_requisicoes(TESTES_DIR / "req_v2_deadlock.txt")
 
-    print("=" * 64)
-    print("VERSÃO 1 - ALGORITMO DO BANQUEIRO (COM PREVENÇÃO)")
-    print("=" * 64)
+    imprimir_secao("VERSÃO 1 - ALGORITMO DO BANQUEIRO (COM PREVENÇÃO)")
     total_v1, processos_v1 = ler_input(TESTES_DIR / "t2.json")
     exibir_resumo_estado(total_v1, processos_v1)
-    print("--- Requisições: testes/req_v2_deadlock.txt ---")
+    print(
+        estilizar(
+            "--- Requisições: testes/req_v2_deadlock.txt ---", NEGRITO, CIANO
+        )
+    )
     for nome, quantidade in requisicoes_deadlock:
         _, mensagem = solicitar_recurso(total_v1, processos_v1, nome, quantidade)
-        print(mensagem)
+        print(colorir_status(mensagem))
 
     print()
-    print("=" * 64)
-    print("VERSÃO 2 - ALOCAÇÃO INGÊNUA / FCFS (SEM PREVENÇÃO)")
-    print("Concede por ordem de chegada se houver saldo; não testa segurança.")
-    print("=" * 64)
+    imprimir_secao(
+        "VERSÃO 2 - ALOCAÇÃO INGÊNUA / FCFS (SEM PREVENÇÃO)",
+        "Concede por ordem de chegada se houver saldo; não testa segurança.",
+    )
 
     # T6: o mesmo pedido do T4, agora concedido sem verificação de segurança.
-    print(">>> T6: estado do T2 + REQ B 1")
+    print(estilizar(">>> T6: estado do T2 + REQ B 1", NEGRITO, AMARELO))
     total_t6, processos_t6 = ler_input(TESTES_DIR / "t2.json")
     exibir_resumo_estado(total_t6, processos_t6)
     bloqueados_t6 = executar_requisicoes_fcfs(
@@ -332,11 +357,18 @@ def executar_comparacao() -> None:
     _, diagnostico_t6 = verificar_deadlock_fcfs(
         total_t6, processos_t6, bloqueados_t6
     )
-    print(f"Diagnóstico (T6): {diagnostico_t6}")
+    print(colorir_status(f"Diagnóstico (T6): {diagnostico_t6}"))
 
     # T7: sequência completa que leva todos os processos ao deadlock.
     print()
-    print(">>> T7: estado do T2 + sequência completa de testes/req_v2_deadlock.txt")
+    print(
+        estilizar(
+            ">>> T7: estado do T2 + sequência completa de "
+            "testes/req_v2_deadlock.txt",
+            NEGRITO,
+            VERMELHO,
+        )
+    )
     total_t7, processos_t7 = ler_input(TESTES_DIR / "t2.json")
     exibir_resumo_estado(total_t7, processos_t7)
     bloqueados_t7 = executar_requisicoes_fcfs(
@@ -345,7 +377,7 @@ def executar_comparacao() -> None:
     _, diagnostico_t7 = verificar_deadlock_fcfs(
         total_t7, processos_t7, bloqueados_t7
     )
-    print(f"Diagnóstico (T7): {diagnostico_t7}")
+    print(colorir_status(f"Diagnóstico (T7): {diagnostico_t7}"))
 
 
 def executar_testes() -> None:
@@ -355,21 +387,21 @@ def executar_testes() -> None:
     assert calcular_disponivel(total_t1, t1) == 10
     seguro, seq = esta_seguro(total_t1, t1)
     assert seguro is True
-    print(f"T1: Seguro (sequência: {', '.join(seq)})")
+    print(colorir_status(f"T1: Seguro (sequência: {', '.join(seq)})"))
 
     # T2
     total_t2, t2 = ler_input(TESTES_DIR / "t2.json")
     assert calcular_disponivel(total_t2, t2) == 2
     seguro, seq = esta_seguro(total_t2, t2)
     assert seguro is True and seq == ["C", "D", "A", "B"]
-    print(f"T2: Seguro (sequência: {', '.join(seq)})")
+    print(colorir_status(f"T2: Seguro (sequência: {', '.join(seq)})"))
 
     # T3
     total_t3, t3 = ler_input(TESTES_DIR / "t3.json")
     assert calcular_disponivel(total_t3, t3) == 1
     seguro, _ = esta_seguro(total_t3, t3)
     assert seguro is False
-    print("T3: Inseguro")
+    print(colorir_status("T3: Inseguro"))
 
     # T4 (Estado do T2, requisição: B pede 1)
     t4 = copy.deepcopy(t2)
@@ -378,7 +410,7 @@ def executar_testes() -> None:
         concedida, msg = solicitar_recurso(total_t2, t4, nome, qtd)
         assert concedida is False
         assert calcular_disponivel(total_t2, t4) == 2  # Garante que houve rollback
-        print(f"T4: {msg}")
+        print(colorir_status(f"T4: {msg}"))
 
     # T5 (Estado do T2, requisição: C pede 2)
     t5 = copy.deepcopy(t2)
@@ -387,21 +419,26 @@ def executar_testes() -> None:
         concedida, msg = solicitar_recurso(total_t2, t5, nome, qtd)
         assert concedida is True
         assert "C, D, A, B" in msg
-        print(f"T5: {msg}")
+        print(colorir_status(f"T5: {msg}"))
 
-    print("\nTodos os testes T1 a T5 passaram com sucesso!")
+    print()
+    print(
+        estilizar("Todos os testes T1 a T5 passaram com sucesso!", NEGRITO, VERDE)
+    )
 
 
 def main():
-    print("************************************************************")
-    print("  VERSÃO 1: ALGORITMO DO BANQUEIRO (TESTES T1 A T5)")
-    print("************************************************************")
+    imprimir_secao(
+        "  VERSÃO 1: ALGORITMO DO BANQUEIRO (TESTES T1 A T5)",
+        caractere="*",
+    )
     executar_testes()
 
     print()
-    print("************************************************************")
-    print("  VERSÃO 2: ALOCAÇÃO INGÊNUA / FCFS (COMPARAÇÃO)")
-    print("************************************************************")
+    imprimir_secao(
+        "  VERSÃO 2: ALOCAÇÃO INGÊNUA / FCFS (COMPARAÇÃO)",
+        caractere="*",
+    )
     executar_comparacao()
 
 
