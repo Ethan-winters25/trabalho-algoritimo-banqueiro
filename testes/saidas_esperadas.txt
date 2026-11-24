@@ -26,7 +26,7 @@ Resultado esperado: REQ C 2 -> CONCEDIDA (sequência segura: C, D, A, B)
 
 [T6] Entrada: testes/t2.json + testes/req_t4.txt (REQ B 1) [Versão 2 - FCFS]
 Disponível inicial: 2
-Resultado esperado: REQ B 1 -> CONCEDIDA SEM VERIFICAÇÃO (FCFS) | Disponível: 1 (ATENÇÃO: sistema entrou em ESTADO INSEGURO!)
+Resultado esperado: REQ B 1 -> CONCEDIDA SEM VERIFICAÇÃO (FCFS) | Disponível: 1 (sistema em ESTADO INSEGURO)
 
 [T7] Entrada: testes/t2.json + testes/req_v2_deadlock.txt [Versão 2 - FCFS]
 Disponível inicial: 2
