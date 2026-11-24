@@ -10,6 +10,40 @@ trabalha com um único tipo de recurso e compara duas formas de alocação:
   qualquer requisição que caiba no saldo disponível no instante, sem verificar a
   segurança futura.
 
+## Versão 1 – Algoritmo do Banqueiro
+
+### Como funciona
+
+A cada requisição `REQ <processo> <quantidade>`, a função `solicitar_recurso`:
+
+1. localiza o processo e verifica se ele existe;
+2. rejeita quantidade não positiva ou acima da necessidade restante
+   (`maximo - possui`);
+3. rejeita pedidos maiores que o disponível no momento;
+4. simula a concessão em uma **cópia profunda** do estado;
+5. executa `esta_seguro` na cópia: se o estado resultante for seguro, efetiva a
+   alocação; caso contrário, **nega** o pedido e mantém o estado original
+   (rollback);
+6. se o processo atingir o máximo, ele conclui e devolve todos os recursos ao
+   sistema.
+
+Assim, o estado real só muda quando existe pelo menos uma sequência segura de
+conclusão para todos os processos ativos.
+
+### Execução a partir de arquivos
+
+`executar_arquivos(caminho_json, caminho_req)` lê o estado inicial, valida os
+dados, exibe a tabela de recursos, informa se o estado inicial é seguro e
+processa todas as linhas do arquivo de requisições, mostrando o resultado de
+cada pedido e o estado final do sistema.
+
+```python
+from pathlib import Path
+from main import executar_arquivos
+
+executar_arquivos(Path("testes/t2.json"), Path("testes/req_t4.txt"))
+```
+
 ## Versão 2 – Alocação Ingênua / FCFS
 
 ### Como funciona
@@ -37,10 +71,27 @@ Sobre a mesma entrada do **T4** (`testes/t2.json` + `REQ B 1`):
   `testes/req_v2_deadlock.txt`, todos os processos ficam bloqueados e ocorre
   **deadlock**.
 
+## Funções principais
+
+| Função | Responsabilidade |
+| :--- | :--- |
+| `ler_input` | Lê o JSON de estado e devolve `(total, processos)`. |
+| `ler_requisicoes` | Lê o arquivo `.txt` e devolve a lista de `(processo, quantidade)`. |
+| `calcular_disponivel` | Calcula `total - soma(possui)` dos processos. |
+| `validar_estado` | Valida o estado inicial (total, alocações e nomes dos processos). |
+| `esta_seguro` | Executa a verificação de estado seguro e devolve a sequência segura. |
+| `solicitar_recurso` | Versão 1: simula, testa a segurança e concede ou nega com rollback. |
+| `executar_arquivos` | Executa a Versão 1 a partir dos arquivos de estado e de requisições. |
+| `solicitar_recurso_fcfs` | Versão 2: concede pelo saldo atual, sem teste de segurança. |
+| `verificar_deadlock_fcfs` | Versão 2: diagnostica estado inseguro ou deadlock. |
+| `executar_requisicoes_fcfs` | Versão 2: processa uma sequência de requisições. |
+| `executar_comparacao` | Compara as duas versões sobre o mesmo estado e as mesmas requisições. |
+| `executar_testes` | Executa os casos obrigatórios T1 a T5 da Versão 1. |
+
 ## Estrutura do projeto
 
 ```text
-main.py                      # leitura, algoritmo do banqueiro e FCFS
+main.py                      # leitura, algoritmo do banqueiro, FCFS e testes
 testes/
   t1.json                    # T1: todos os processos sem recursos
   t2.json                    # T2: estado parcialmente alocado
@@ -65,6 +116,10 @@ O programa executa:
 2. a comparação da **Versão 1** com a **Versão 2 (FCFS)**, incluindo os testes
    **T6** (concessão insegura) e **T7** (deadlock).
 
+Para processar um par específico de arquivos (estado + requisições) pela Versão
+1, use `executar_arquivos` conforme o exemplo da seção
+[Versão 1 – Execução a partir de arquivos](#execução-a-partir-de-arquivos).
+
 ## Casos de teste
 
 ### Versão 1 – Algoritmo do Banqueiro
@@ -76,6 +131,13 @@ O programa executa:
 | **T3** | `testes/t3.json` | 1 | Inseguro |
 | **T4** | `t2.json` + `req_t4.txt` (`REQ B 1`) | 2 | Negada (estado resultante inseguro) |
 | **T5** | `t2.json` + `req_t5.txt` (`REQ C 2`) | 2 | Concedida (sequência segura: C, D, A, B) |
+
+Saídas dos pedidos:
+
+```text
+REQ B 1 -> NEGADA (estado resultante inseguro)
+REQ C 2 -> CONCEDIDA (sequência segura: C, D, A, B)
+```
 
 ### Versão 2 – Alocação Ingênua / FCFS
 

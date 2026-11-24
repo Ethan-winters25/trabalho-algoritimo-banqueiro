@@ -70,13 +70,98 @@ def esta_seguro(total: int, processos: list[dict]) -> tuple[bool, list[str]]:
 def solicitar_recurso(
     total: int, processos: list[dict], nome_processo: str, quantidade: int
 ) -> tuple[bool, str]:
-    # TODO: Implementar processamento de solicitação de recurso
-    pass
+    """
+    Versão 1 - Algoritmo do Banqueiro (evita impasses).
+
+    Valida o pedido e simula a concessão em uma cópia do estado. A alocação só
+    é efetivada se o estado resultante permanecer seguro; caso contrário, o
+    pedido é negado e o estado original permanece intacto (rollback).
+    Quando o processo atinge seu máximo, ele conclui e devolve os recursos.
+    """
+    processo = next((p for p in processos if p["nome"] == nome_processo), None)
+    if processo is None:
+        return False, (
+            f"REQ {nome_processo} {quantidade} -> NEGADA "
+            f"(processo '{nome_processo}' não existe)"
+        )
+
+    necessidade = processo["maximo"] - processo["possui"]
+
+    if quantidade <= 0:
+        return False, (
+            f"REQ {nome_processo} {quantidade} -> NEGADA (quantidade inválida)"
+        )
+    if quantidade > necessidade:
+        return False, (
+            f"REQ {nome_processo} {quantidade} -> NEGADA "
+            "(excede o máximo declarado pelo processo)"
+        )
+
+    disponivel = calcular_disponivel(total, processos)
+    if quantidade > disponivel:
+        return False, (
+            f"REQ {nome_processo} {quantidade} -> NEGADA "
+            f"(recursos disponíveis insuficientes: {disponivel})"
+        )
+
+    # Simula a concessão em uma cópia
+    # o estado real só muda se o resultado continuar seguro (prevenção de impasses).
+    estado_simulado = copy.deepcopy(processos)
+    for p in estado_simulado:
+        if p["nome"] == nome_processo:
+            p["possui"] += quantidade
+            break
+
+    seguro, sequencia = esta_seguro(total, estado_simulado)
+    if not seguro:
+        return False, (
+            f"REQ {nome_processo} {quantidade} -> NEGADA (estado resultante inseguro)"
+        )
+
+    processo["possui"] += quantidade
+    seq_str = ", ".join(sequencia)
+
+    # Se o processo atingiu o máximo, conclui e devolve todos os recursos.
+    if processo["possui"] == processo["maximo"]:
+        processo["possui"] = 0
+        processo["maximo"] = 0
+
+    return True, (
+        f"REQ {nome_processo} {quantidade} -> CONCEDIDA "
+        f"(sequência segura: {seq_str})"
+    )
 
 
 def executar_arquivos(caminho_json: Path, caminho_req: Path) -> None:
-    # TODO: Implementar execução a partir dos arquivos de entrada e requisições
-    pass
+    """
+    Executa a Versão 1 a partir dos arquivos de estado e de requisições.
+
+    Lê o JSON, valida o estado inicial, exibe a tabela de recursos e processa
+    cada linha `REQ <processo> <quantidade>` do arquivo de requisições,
+    imprimindo o resultado de cada pedido e o estado final do sistema.
+    """
+    total, processos = ler_input(caminho_json)
+    validar_estado(total, processos)
+    requisicoes = ler_requisicoes(caminho_req)
+
+    print(f"Arquivo de estado: {caminho_json}")
+    print(f"Arquivo de requisições: {caminho_req}")
+    exibir_resumo_estado(total, processos)
+
+    seguro, sequencia = esta_seguro(total, processos)
+    if seguro:
+        print(f"Estado inicial: SEGURO (sequência segura: {', '.join(sequencia)})")
+    else:
+        print("Estado inicial: INSEGURO (não há sequência segura)")
+
+    print("--- Processando requisições ---")
+    for nome, quantidade in requisicoes:
+        _, mensagem = solicitar_recurso(total, processos, nome, quantidade)
+        print(mensagem)
+
+    print()
+    print("--- Estado final ---")
+    exibir_resumo_estado(total, processos)
 
 
 def solicitar_recurso_fcfs(
@@ -293,7 +378,7 @@ def executar_testes() -> None:
         concedida, msg = solicitar_recurso(total_t2, t4, nome, qtd)
         assert concedida is False
         assert calcular_disponivel(total_t2, t4) == 2  # Garante que houve rollback
-        print(f"T4: REQ {nome} {qtd} -> {msg}")
+        print(f"T4: {msg}")
 
     # T5 (Estado do T2, requisição: C pede 2)
     t5 = copy.deepcopy(t2)
@@ -302,7 +387,7 @@ def executar_testes() -> None:
         concedida, msg = solicitar_recurso(total_t2, t5, nome, qtd)
         assert concedida is True
         assert "C, D, A, B" in msg
-        print(f"T5: REQ {nome} {qtd} -> {msg}")
+        print(f"T5: {msg}")
 
     print("\nTodos os testes T1 a T5 passaram com sucesso!")
 
