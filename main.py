@@ -65,18 +65,61 @@ def ler_requisicoes(caminho: Path) -> list[tuple[str, int]]:
 
 
 def calcular_disponivel(total: int, processos: list[dict]) -> int:
-    # TODO: Implementar cálculo de recursos disponíveis
-    pass
+   total_possuido = sum(p["possui"] for p in processos)
+    return total - total_possuido
 
 
 def validar_estado(total: int, processos: list[dict]) -> None:
-    # TODO: Implementar validação do estado dos processos e recursos
-    pass
+    if total < 0:
+        raise ValueError("Total de recursos não pode ser negativo.")
+
+    soma_possui = 0
+    for p in processos:
+        nome = p["nome"]
+        possui = p["possui"]
+        maximo = p["maximo"]
+
+        if possui < 0 or maximo < 0:
+            raise ValueError(f"Processo '{nome}' possui valores negativos.")
+        if possui > maximo:
+            raise ValueError(
+                f"Processo '{nome}' possui ({possui}) mais que o máximo ({maximo})."
+            )
+
+        soma_possui += possui
+
+    if soma_possui > total:
+        raise ValueError(
+            f"Soma alocada ({soma_possui}) excede o total de recursos ({total})."
+        )
 
 
 def esta_seguro(total: int, processos: list[dict]) -> tuple[bool, list[str]]:
-    # TODO: Implementar verificação de estado seguro (Algoritmo do Banqueiro)
-    pass
+    work = calcular_disponivel(total, processos)
+    if work < 0:
+        return False, []
+
+    n = len(processos)
+    finalizado = [False] * n
+    sequencia: list[str] = []
+
+    while len(sequencia) < n:
+        progrediu = False
+        for i, p in enumerate(processos):
+            necessidade = p["maximo"] - p["possui"]
+           
+            if not finalizado[i] and necessidade <= work:
+               
+                work += p["possui"]
+                finalizado[i] = True
+                sequencia.append(p["nome"])
+                progrediu = True
+
+       
+        if not progrediu:
+            return False, []
+
+    return True, sequencia
 
 
 def solicitar_recurso(
