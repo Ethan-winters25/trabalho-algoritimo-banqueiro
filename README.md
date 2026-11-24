@@ -37,6 +37,30 @@ dados, exibe a tabela de recursos, informa se o estado inicial é seguro e
 processa todas as linhas do arquivo de requisições, mostrando o resultado de
 cada pedido e o estado final do sistema.
 
+O formato de estado escolhido é **JSON**:
+
+```json
+{
+  "total": 10,
+  "processos": [
+    {"nome": "A", "possui": 1, "maximo": 6},
+    {"nome": "B", "possui": 1, "maximo": 5},
+    {"nome": "C", "possui": 2, "maximo": 4},
+    {"nome": "D", "possui": 4, "maximo": 7}
+  ]
+}
+```
+
+O arquivo de requisições é um `.txt` com uma requisição por linha, no formato
+`REQ <processo> <quantidade>`. Linhas vazias e linhas iniciadas por `#` são
+ignoradas:
+
+```text
+# Exemplo
+REQ B 1
+REQ C 2
+```
+
 ```python
 from pathlib import Path
 from main import executar_arquivos
@@ -78,7 +102,7 @@ Sobre a mesma entrada do **T4** (`testes/t2.json` + `REQ B 1`):
 | `ler_input` | Lê o JSON de estado e devolve `(total, processos)`. |
 | `ler_requisicoes` | Lê o arquivo `.txt` e devolve a lista de `(processo, quantidade)`. |
 | `calcular_disponivel` | Calcula `total - soma(possui)` dos processos. |
-| `validar_estado` | Valida o estado inicial (total, alocações e nomes dos processos). |
+| `validar_estado` | Valida o estado inicial (total, alocações e limites máximos). |
 | `esta_seguro` | Executa a verificação de estado seguro e devolve a sequência segura. |
 | `solicitar_recurso` | Versão 1: simula, testa a segurança e concede ou nega com rollback. |
 | `executar_arquivos` | Executa a Versão 1 a partir dos arquivos de estado e de requisições. |
@@ -113,17 +137,27 @@ testes/
 
 ## Como executar
 
-Pré-requisito: Python 3.9 ou superior (apenas biblioteca padrão).
+Pré-requisito: Python 3.9 ou superior (apenas biblioteca padrão). Não há etapa
+de compilação; execute o script diretamente.
+
+Por padrão, o programa exibe apenas a demonstração/comparação entre as duas
+versões, sem executar os testes automatizados:
 
 ```bash
 python main.py
 ```
 
-O programa executa:
+Para executar **somente** os testes obrigatórios **T1 a T5**:
 
-1. os testes obrigatórios **T1 a T5** da Versão 1;
-2. a comparação da **Versão 1** com a **Versão 2 (FCFS)**, incluindo os testes
-   **T6** (concessão insegura) e **T7** (deadlock).
+```bash
+python main.py --testes
+# ou
+python main.py -t
+```
+
+O modo `--testes` não executa a comparação, e o modo padrão não executa os
+testes. A comparação da **Versão 1** com a **Versão 2 (FCFS)** inclui os testes
+**T6** (concessão insegura) e **T7** (deadlock).
 
 Para processar um par específico de arquivos (estado + requisições) pela Versão
 1, use `executar_arquivos` conforme o exemplo da seção
@@ -165,6 +199,9 @@ Saídas dos pedidos:
 REQ B 1 -> NEGADA (estado resultante inseguro)
 REQ C 2 -> CONCEDIDA (sequência segura: C, D, A, B)
 ```
+
+Todos os casos T1 a T5 passam na execução automatizada
+(`python main.py --testes`).
 
 ### Versão 2 – Alocação Ingênua / FCFS
 
