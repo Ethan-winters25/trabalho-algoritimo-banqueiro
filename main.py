@@ -20,11 +20,12 @@ Uso:
     python main.py --testes   # apenas os testes obrigatórios T1 a T5
 """
 
-import argparse
-import copy
-import json
-from pathlib import Path
+import argparse  # Leitura de argumentos da linha de comando (--testes / -t)
+import copy      # Cópia profunda (deepcopy) para simular alocações sem alterar o estado real
+import json      # Leitura dos arquivos de estado no formato JSON (Opção 3 do enunciado)
+from pathlib import Path  # Manipulação segura de caminhos de arquivos entre SOs
 
+# Importa utilitários de formatação visual (separados da lógica do simulador)
 from estilo import (
     AMARELO,
     AZUL,
@@ -37,10 +38,29 @@ from estilo import (
     imprimir_secao,
 )
 
+# Diretório onde ficam os arquivos de entrada dos testes (t1.json..t3.json e req_*.txt)
 TESTES_DIR = Path(__file__).resolve().parent / "testes"
 
 
+# =============================================================================
+# 1. LEITURA DE ENTRADAS E FUNÇÕES AUXILIARES
+# =============================================================================
+
 def ler_input(caminho: Path) -> tuple[int, list[dict]]:
+    """
+    Lê o arquivo de estado inicial no formato JSON (Opção 3 do trabalho).
+
+    Estrutura esperada no JSON:
+        {
+            "total": 10,
+            "processos": [
+                {"nome": "A", "possui": 1, "maximo": 6},
+                ...
+            ]
+        }
+
+    Retorna uma tupla (total_de_recursos, lista_de_processos).
+    """
     with open(caminho, "r", encoding="utf-8") as arquivo:
         dados = json.load(arquivo)
 
@@ -48,16 +68,27 @@ def ler_input(caminho: Path) -> tuple[int, list[dict]]:
     processos = dados["processos"]
 
     return total, processos
-    
+
+
 def ler_requisicoes(caminho: Path) -> list[tuple[str, int]]:
+    """
+    Lê um arquivo de requisições no formato definido pelo enunciado:
+        REQ <NOME_DO_PROCESSO> <QUANTIDADE>
+        Exemplo: REQ B 1
+
+    Linhas em branco e comentários iniciados com '#' são ignorados.
+    Retorna uma lista de tuplas (nome_processo, quantidade).
+    """
     requisicoes: list[tuple[str, int]] = []
     with open(caminho, "r", encoding="utf-8") as f:
         for num_linha, linha in enumerate(f, start=1):
             linha = linha.strip()
+            # Ignora linhas vazias e comentários nos arquivos de teste
             if not linha or linha.startswith("#"):
                 continue
 
             partes = linha.split()
+            # Valida se a linha segue exatamente o padrão "REQ <PROCESSO> <QTD>"
             if len(partes) != 3 or partes[0].upper() != "REQ":
                 raise ValueError(
                     f"Linha {num_linha} inválida: '{linha}'. Formato esperado: REQ <PROCESSO> <QTD>"
@@ -70,22 +101,36 @@ def ler_requisicoes(caminho: Path) -> list[tuple[str, int]]:
 
 
 def calcular_disponivel(total: int, processos: list[dict]) -> int:
+    """
+    Calcula quantas unidades de recurso ainda estão livres no "cofre" do banqueiro.
+
+    Fórmula do enunciado: Disponível = TOTAL - soma(possui de todos os processos).
+    Exemplo (T2): Total = 10, Alocados = 1+1+2+4 = 8  ->  Disponível = 2.
+    """
     total_possuido = sum(p["possui"] for p in processos)
     return total - total_possuido
 
 
 def formatar_sequencia(sequencia: list[str]) -> str:
-    """Formata a sequência segura para exibição."""
+    """Formata a sequência segura (ex.: ['C', 'D', 'A', 'B'] -> 'C, D, A, B')."""
     return ", ".join(sequencia) if sequencia else "nenhum processo pendente"
 
 
 def imprimir_requisicao(indice: int, total: int, mensagem: str) -> None:
-    """Imprime uma requisição numerada, com o status destacado."""
+    """Imprime uma requisição numerada (ex.: [1/5]), destacando palavras-chave."""
     etiqueta = estilizar(f"  [{indice}/{total}]", NEGRITO, CIANO)
     print(f"{etiqueta} {colorir_status(mensagem)}")
 
 
 def validar_estado(total: int, processos: list[dict]) -> None:
+    """
+    Verifica a consistência dos dados de entrada antes de iniciar a simulação.
+
+    Garante que:
+    - Não existem valores negativos;
+    - Nenhum processo possui mais recursos do que seu máximo declarado;
+    - A soma de recursos alocados não ultrapassa o total existente no sistema.
+    """
     if total < 0:
         raise ValueError("Total de recursos não pode ser negativo.")
 
@@ -110,7 +155,28 @@ def validar_estado(total: int, processos: list[dict]) -> None:
         )
 
 
+# =============================================================================
+# 2. VERSÃO 1 - ALGORITMO DO BANQUEIRO (DIJKSTRA, 1965)
+# =============================================================================
+
 def esta_seguro(total: int, processos: list[dict]) -> tuple[bool, list[str]]:
+    """
+    Requisito 1 da Versão 1: Verificação de Estado Seguro.
+
+    Um estado é considerado SEGURO se existir pelo menos uma ordem (sequência
+    segura) em que todos os processos ativos possam receber o restante de seus
+    recursos, concluir e devolver o que possuem ao cofre.
+
+    Passos do algoritmo:
+    1. Inicializa 'work' (saldo simulado) com o total disponível atual.
+    2. Procura um processo ainda não finalizado cuja necessidade (máximo - possui)
+       seja menor ou igual a 'work'.
+    3. Se encontrar, simula sua conclusão: soma os recursos que ele já possuía
+       de volta em 'work', marca como finalizado e adiciona na sequência segura.
+    4. Repete até todos finalizarem (SEGURO) ou até nenhuma iteração conseguir
+       finalizar mais ninguém (INSEGURO).
+    """
+    # 'work' representa os recursos disponíveis conforme simulamos a conclusão dos processos
     work = calcular_disponivel(total, processos)
     if work < 0:
         return False, []
@@ -121,22 +187,27 @@ def esta_seguro(total: int, processos: list[dict]) -> tuple[bool, list[str]]:
     finalizado = [False] * n
     sequencia: list[str] = []
 
+    # Tenta encontrar uma ordem que consiga finalizar todos os 'n' processos ativos
     while len(sequencia) < n:
-        progrediu = False
+        progrediu = False  # Controla se algum processo conseguiu concluir nesta passagem
+
         for i, p in enumerate(ativos):
+            # Necessidade = quantos recursos ainda faltam para o processo atingir o máximo
             necessidade = p["maximo"] - p["possui"]
-           
+
+            # Se o processo ainda não terminou e o saldo atual cobre o que ele precisa:
             if not finalizado[i] and necessidade <= work:
-               
+                # Simula o término: ao concluir, o processo devolve tudo que já possuía
                 work += p["possui"]
                 finalizado[i] = True
                 sequencia.append(p["nome"])
                 progrediu = True
 
-       
+        # Se percorreu todos os processos e nenhum pôde concluir, não há saída segura
         if not progrediu:
             return False, []
 
+    # Todos os processos ativos entraram na sequência -> estado SEGURO
     return True, sequencia
 
 
@@ -144,13 +215,20 @@ def solicitar_recurso(
     total: int, processos: list[dict], nome_processo: str, quantidade: int
 ) -> tuple[bool, str]:
     """
-    Versão 1 - Algoritmo do Banqueiro (evita impasses).
+    Requisito 2 da Versão 1: Processamento de Requisição (Algoritmo do Banqueiro).
 
-    Valida o pedido e simula a concessão em uma cópia do estado. A alocação só
-    é efetivada se o estado resultante permanecer seguro; caso contrário, o
-    pedido é negado e o estado original permanece intacto (rollback).
-    Quando o processo atinge seu máximo, ele conclui e devolve os recursos.
+    Fluxo de decisão:
+    1. Valida se o processo existe e se a quantidade é válida (não excede o máximo).
+    2. Verifica se há recursos disponíveis suficientes no momento.
+    3. Simula a concessão em uma cópia do estado (sem mexer no estado real).
+    4. Executa 'esta_seguro()' sobre o estado simulado:
+       - Se resultar em estado INSEGURO -> NEGA a requisição (rollback implícito,
+         pois o estado original não foi alterado).
+       - Se resultar em estado SEGURO   -> CONCEDE e efetiva no estado real.
+    5. Caso o processo atinja seu máximo após a concessão, ele conclui e devolve
+       todos os seus recursos ao sistema.
     """
+    # 1. Busca o processo pelo nome
     processo = next((p for p in processos if p["nome"] == nome_processo), None)
     if processo is None:
         return False, (
@@ -160,6 +238,7 @@ def solicitar_recurso(
 
     necessidade = processo["maximo"] - processo["possui"]
 
+    # 2. Validações de integridade do pedido
     if quantidade <= 0:
         return False, (
             f"REQ {nome_processo} {quantidade} -> NEGADA (quantidade inválida)"
@@ -170,6 +249,7 @@ def solicitar_recurso(
             "(excede o máximo declarado pelo processo)"
         )
 
+    # 3. Verifica se o cofre tem saldo imediato para atender o pedido
     disponivel = calcular_disponivel(total, processos)
     if quantidade > disponivel:
         return False, (
@@ -177,24 +257,27 @@ def solicitar_recurso(
             f"(recursos disponíveis insuficientes: {disponivel})"
         )
 
-    # Simula a concessão em uma cópia
-    # o estado real só muda se o resultado continuar seguro (prevenção de impasses).
+    # 4. Simulação hipotética ("e se eu emprestar agora?"):
+    #    Usa deepcopy para testar o impacto da alocação sem alterar o estado real.
     estado_simulado = copy.deepcopy(processos)
     for p in estado_simulado:
         if p["nome"] == nome_processo:
             p["possui"] += quantidade
             break
 
+    # 5. Testa se o estado após o empréstimo hipotético continua SEGURO
     seguro, sequencia = esta_seguro(total, estado_simulado)
     if not seguro:
+        # Rollback automático: como só alteramos 'estado_simulado', 'processos' segue intacto
         return False, (
             f"REQ {nome_processo} {quantidade} -> NEGADA (estado resultante inseguro)"
         )
 
+    # 6. Estado resultante é seguro -> efetiva a concessão no estado real
     processo["possui"] += quantidade
     seq_str = formatar_sequencia(sequencia)
 
-    # Se o processo atingiu o máximo, conclui e devolve todos os recursos.
+    # Se o processo atingiu o máximo, conclui sua tarefa e devolve todos os recursos ao cofre
     if processo["possui"] == processo["maximo"]:
         processo["possui"] = 0
         processo["maximo"] = 0
@@ -208,11 +291,11 @@ def solicitar_recurso(
 
 def executar_arquivos(caminho_json: Path, caminho_req: Path) -> None:
     """
-    Executa a Versão 1 a partir dos arquivos de estado e de requisições.
+    Função auxiliar para executar a Versão 1 a partir de quaisquer dois arquivos:
+    um JSON de estado inicial e um TXT de requisições.
 
-    Lê o JSON, valida o estado inicial, exibe a tabela de recursos e processa
-    cada linha `REQ <processo> <quantidade>` do arquivo de requisições,
-    imprimindo o resultado de cada pedido e o estado final do sistema.
+    Lê o JSON, valida o estado inicial, exibe a tabela de recursos, verifica se o
+    estado inicial já é seguro e processa cada linha `REQ <processo> <quantidade>`.
     """
     total, processos = ler_input(caminho_json)
     validar_estado(total, processos)
@@ -242,22 +325,30 @@ def executar_arquivos(caminho_json: Path, caminho_req: Path) -> None:
     exibir_resumo_estado(total, processos)
 
 
+# =============================================================================
+# 3. VERSÃO 2 - ALOCAÇÃO INGÊNUA / FCFS (CONTRASTE QUE DEMONSTRA O DEADLOCK)
+# =============================================================================
+
 def solicitar_recurso_fcfs(
-    total: int,
-    processos: list[dict],
-    nome_processo: str,
-    quantidade: int,
-    bloqueados: set[str],
+    total: int,              # Total de recursos existentes no sistema (ex.: 10)
+    processos: list[dict],   # Lista de processos com posse atual e máximo
+    nome_processo: str,      # Nome do processo que está solicitando recursos (ex.: "B")
+    quantidade: int,         # Quantidade solicitada (ex.: 1)
+    bloqueados: set[str],    # Conjunto dos processos atualmente travados aguardando recurso
 ) -> tuple[bool, str]:
     """
     Versão 2 - Alocação Ingênua / FCFS (First-Come, First-Served).
 
-    Atende imediatamente qualquer pedido que caiba no saldo disponível no
-    instante, sem verificar se o estado resultante é seguro. Se faltar recurso,
-    o processo fica bloqueado aguardando liberação. É justamente essa ausência
-    de verificação que permite ao sistema entrar em estado inseguro e evoluir
-    para um deadlock.
+    Diferença central em relação ao Algoritmo do Banqueiro:
+    - O Banqueiro testa se o estado futuro será SEGURO antes de conceder.
+    - O FCFS olha apenas o presente: "se há saldo disponível no cofre agora,
+      concede imediatamente". Se não há saldo, o processo fica BLOQUEADO
+      esperando outros processos devolverem recursos.
+
+    Essa ausência de prevenção permite que o sistema entre em estado inseguro
+    e, na sequência de pedidos seguinte, trave todos os processos em DEADLOCK.
     """
+    # Validação de existência do processo
     processo = next((p for p in processos if p["nome"] == nome_processo), None)
     if processo is None:
         return False, (
@@ -267,6 +358,7 @@ def solicitar_recurso_fcfs(
 
     necessidade = processo["maximo"] - processo["possui"]
 
+    # Validação da quantidade solicitada
     if quantidade <= 0:
         return False, f"REQ {nome_processo} {quantidade} -> ERRO (quantidade inválida)"
     if quantidade > necessidade:
@@ -275,13 +367,14 @@ def solicitar_recurso_fcfs(
             "(excede o máximo declarado)"
         )
 
-    disponivel = calcular_disponivel(total, processos)
+    disponivel = calcular_disponivel(total, processos)  # Em t2.json, começa em 2
 
+    # Regra ingênua do FCFS: se couber no saldo atual, entrega sem verificar segurança
     if quantidade <= disponivel:
         processo["possui"] += quantidade
-        bloqueados.discard(nome_processo)
+        bloqueados.discard(nome_processo)  # Se estava bloqueado antes, volta a rodar
 
-        # Se o processo atingiu seu máximo, conclui e devolve todos os recursos.
+        # Se o processo atingiu seu máximo, conclui e libera todos os seus recursos
         if processo["possui"] == processo["maximo"]:
             liberado = processo["possui"]
             processo["possui"] = 0
@@ -293,17 +386,22 @@ def solicitar_recurso_fcfs(
                 f"(disponível: {calcular_disponivel(total, processos)})"
             )
 
+        # para fins didáticos: consulta 'esta_seguro' DEPOIS
+        # da concessão para mostrar que o FCFS acabou de levar o sistema
+        # para um ESTADO INSEGURO sem perceber.
         seguro, _ = esta_seguro(total, processos)
         alerta = (
             "sistema em ESTADO INSEGURO"
             if not seguro
             else "estado ainda seguro"
         )
+
         return True, (
             f"REQ {nome_processo} {quantidade} -> CONCEDIDA SEM VERIFICAÇÃO (FCFS) | "
             f"Disponível: {calcular_disponivel(total, processos)} ({alerta})"
         )
 
+    # Saldo insuficiente -> o processo não recebe o recurso e fica bloqueado esperando
     bloqueados.add(nome_processo)
     return False, (
         f"REQ {nome_processo} {quantidade} -> BLOQUEADO (processo {nome_processo} "
@@ -315,8 +413,13 @@ def verificar_deadlock_fcfs(
     total: int, processos: list[dict], bloqueados: set[str]
 ) -> tuple[bool, str]:
     """
-    Verifica se a Versão 2 chegou a um deadlock: todos os processos ativos
-    ficaram bloqueados e nenhum consegue atingir seu máximo com o saldo atual.
+    Diagnostica a situação final da Versão 2 (FCFS), diferenciando:
+    1. DEADLOCK real: todos os processos ativos estão bloqueados esperando
+       recursos e o saldo disponível não permite que nenhum deles conclua.
+    2. ESTADO INSEGURO (ainda sem deadlock): nenhum processo consegue concluir
+       com o saldo atual, mas nem todos estão bloqueados ainda — ilustra a
+       pergunta teórica do trabalho ("Um estado inseguro leva sempre a deadlock?").
+    3. Normal: ainda existem processos capazes de terminar.
     """
     ativos = [p for p in processos if p["maximo"] > 0]
     if not ativos:
@@ -328,6 +431,7 @@ def verificar_deadlock_fcfs(
         (p["maximo"] - p["possui"]) > disponivel for p in ativos
     )
 
+    # Condição de deadlock: todos travados + ninguém consegue terminar para liberar recursos
     if todos_bloqueados and nenhum_pode_terminar:
         nomes = ", ".join(p["nome"] for p in ativos)
         return True, (
@@ -335,16 +439,23 @@ def verificar_deadlock_fcfs(
             f"Disponível no cofre = {disponivel}, insuficiente para qualquer "
             "processo finalizar."
         )
+
+    # Estado inseguro: ainda não travou todos, mas não há garantia de término
     if nenhum_pode_terminar:
         return False, (
             f"Sistema em ESTADO INSEGURO (disponível = {disponivel}); "
             "se os processos pedirem o restante de seus máximos, ocorrerá deadlock."
         )
+
     return False, "Sistema ainda possui processos capazes de concluir."
 
 
+# =============================================================================
+# 4. EXIBIÇÃO E ROTINAS DE DEMONSTRAÇÃO / TESTES
+# =============================================================================
+
 def exibir_resumo_estado(total: int, processos: list[dict]) -> None:
-    """Imprime uma tabela com o estado atual do sistema."""
+    """Imprime uma tabela organizada com Total, Disponível e situação de cada processo."""
     disponivel = calcular_disponivel(total, processos)
     separador = estilizar("-" * 64, AZUL)
     print(separador)
@@ -371,7 +482,7 @@ def exibir_resumo_estado(total: int, processos: list[dict]) -> None:
 def executar_requisicoes_fcfs(
     total: int, processos: list[dict], requisicoes: list[tuple[str, int]]
 ) -> set[str]:
-    """Processa uma sequência de requisições na Versão 2 e retorna os bloqueados."""
+    """Aplica uma lista de requisições em sequência usando a Versão 2 (FCFS)."""
     bloqueados: set[str] = set()
     for indice, (nome, quantidade) in enumerate(requisicoes, start=1):
         _, mensagem = solicitar_recurso_fcfs(
@@ -383,28 +494,32 @@ def executar_requisicoes_fcfs(
 
 def executar_comparacao() -> None:
     """
-    Compara as duas versões sobre o mesmo estado inicial (t2.json) e a mesma
-    sequência de requisições (req_v2_deadlock.txt).
+    Modo padrão da apresentação ao vivo (`python main.py`).
 
-    A Versão 1 nega o pedido que levaria ao estado inseguro e preserva o
-    sistema. A Versão 2 (FCFS) concede o mesmo pedido sem verificação, reduz o
-    disponível e termina em deadlock.
+    Coloca as duas versões lado a lado sobre o MESMO estado inicial (t2.json) e
+    a MESMA sequência de requisições (req_v2_deadlock.txt):
+    - Versão 1 (Banqueiro): nega 'REQ B 1' porque levaria ao estado inseguro,
+      mantém o sistema seguro e permite a conclusão dos processos sem bloqueio.
+    - Versão 2 (FCFS):
+        * [T6] Concede 'REQ B 1' sem checar segurança -> estado fica INSEGURO.
+        * [T7] Ao processar os pedidos seguintes, todos os processos bloqueiam
+          -> DEADLOCK DETECTADO.
     """
     requisicoes_t4 = ler_requisicoes(TESTES_DIR / "req_t4.txt")
     requisicoes_deadlock = ler_requisicoes(TESTES_DIR / "req_v2_deadlock.txt")
 
     imprimir_secao(
-        "  COMPARAÇÃO: BANQUEIRO x FCFS",
+        "  COMPARAÇÃO: BANQUEIRO x First-Come, First-Served (FCFS)",
         "As duas versões partem do mesmo estado inicial.",
         caractere="━",
     )
 
-    # Estado inicial comum ---------------------------------------------------
+    # --- Estado inicial comum (Slide 73 / T2: A 1/6, B 1/5, C 2/4, D 4/7; Disp = 2) ---
     total_base, processos_base = ler_input(TESTES_DIR / "t2.json")
     print(estilizar("Estado inicial comum (testes/t2.json):", NEGRITO))
     exibir_resumo_estado(total_base, processos_base)
 
-    # Versão 1 ---------------------------------------------------------------
+    # --- Execução da Versão 1: Algoritmo do Banqueiro ---
     print()
     imprimir_secao(
         "ALGORITMO DO BANQUEIRO",
@@ -445,7 +560,7 @@ def executar_comparacao() -> None:
             )
         )
 
-    # Versão 2 ---------------------------------------------------------------
+    # --- Execução da Versão 2: Alocação Ingênua / FCFS ---
     print()
     imprimir_secao(
         "alocação ingênua / FCFS",
@@ -453,7 +568,8 @@ def executar_comparacao() -> None:
         caractere="━",
     )
 
-    # T6: o mesmo pedido do T4, agora concedido sem verificação de segurança.
+    # T6: Mostra isoladamente o momento exato em que o sistema entra em ESTADO INSEGURO
+    #     (o mesmo REQ B 1 que o Banqueiro negou no T4).
     print(estilizar("[T6] Estado do T2 + REQ B 1", NEGRITO, AMARELO))
     total_t6, processos_t6 = ler_input(TESTES_DIR / "t2.json")
     bloqueados_t6 = executar_requisicoes_fcfs(
@@ -467,7 +583,7 @@ def executar_comparacao() -> None:
     )
     print(colorir_status(f"Diagnóstico (T6): {diagnostico_t6}"))
 
-    # T7: sequência completa que leva todos os processos ao deadlock.
+    # T7: Reinicia de t2.json e roda a sequência inteira até todos os processos travarem
     print()
     print(
         estilizar(
@@ -489,7 +605,7 @@ def executar_comparacao() -> None:
     )
     print(colorir_status(f"Diagnóstico (T7): {diagnostico_t7}"))
 
-    # Resumo -----------------------------------------------------------------
+    # --- Quadro-resumo comparativo para encerrar a demonstração ---
     print()
     imprimir_secao(
         "  RESUMO DA COMPARAÇÃO",
@@ -519,8 +635,17 @@ def executar_comparacao() -> None:
 
 
 def executar_testes() -> None:
-    """Executa os casos de teste obrigatórios T1 a T5."""
-    # T1
+    """
+    Executa e valida automaticamente (via assert) os 5 casos de teste obrigatórios
+    baseados no slide 73 da aula:
+
+    - T1: A 0/6, B 0/5, C 0/4, D 0/7 (Disp = 10) -> Seguro
+    - T2: A 1/6, B 1/5, C 2/4, D 4/7 (Disp = 2)  -> Seguro (sequência: C, D, A, B)
+    - T3: A 1/6, B 2/5, C 2/4, D 4/7 (Disp = 1)  -> Inseguro
+    - T4: Estado do T2 + requisição 'REQ B 1'    -> Negada (levaria ao estado T3)
+    - T5: Estado do T2 + requisição 'REQ C 2'    -> Concedida (C conclui e libera recursos)
+    """
+    # T1: Cofre cheio (10 disponíveis), ninguém alocou nada -> garantidamente seguro
     total_t1, t1 = ler_input(TESTES_DIR / "t1.json")
     assert calcular_disponivel(total_t1, t1) == 10
     seguro, seq = esta_seguro(total_t1, t1)
@@ -528,7 +653,7 @@ def executar_testes() -> None:
     print(estilizar("[T1] testes/t1.json | disponível = 10", NEGRITO, CIANO))
     print(colorir_status(f"     Seguro (sequência: {formatar_sequencia(seq)})"))
 
-    # T2
+    # T2: Estado intermediário seguro; C precisa de 2 (== disponível) e inicia a cadeia
     total_t2, t2 = ler_input(TESTES_DIR / "t2.json")
     assert calcular_disponivel(total_t2, t2) == 2
     seguro, seq = esta_seguro(total_t2, t2)
@@ -536,7 +661,7 @@ def executar_testes() -> None:
     print(estilizar("[T2] testes/t2.json | disponível = 2", NEGRITO, CIANO))
     print(colorir_status(f"     Seguro (sequência: {formatar_sequencia(seq)})"))
 
-    # T3
+    # T3: Apenas 1 disponível, mas a menor necessidade entre os processos é 2 -> inseguro
     total_t3, t3 = ler_input(TESTES_DIR / "t3.json")
     assert calcular_disponivel(total_t3, t3) == 1
     seguro, _ = esta_seguro(total_t3, t3)
@@ -544,12 +669,12 @@ def executar_testes() -> None:
     print(estilizar("[T3] testes/t3.json | disponível = 1", NEGRITO, CIANO))
     print(colorir_status("     Inseguro (não há sequência segura)"))
 
-    # T4 e T5 partem do mesmo estado base.
+    # T4 e T5 partem do mesmo estado base (T2), usando deepcopy para não interferirem entre si
     print()
     print(estilizar("[T4/T5] Estado base: testes/t2.json", NEGRITO, CIANO))
     exibir_resumo_estado(total_t2, t2)
 
-    # T4 (Estado do T2, requisição: B pede 1)
+    # T4 (Estado do T2, requisição: B pede 1 -> levaria ao estado T3 -> deve ser NEGADA)
     print()
     print(estilizar("[T4] Requisição: REQ B 1", NEGRITO, CIANO))
     t4 = copy.deepcopy(t2)
@@ -557,11 +682,11 @@ def executar_testes() -> None:
     for nome, qtd in reqs_t4:
         concedida, msg = solicitar_recurso(total_t2, t4, nome, qtd)
         assert concedida is False
-        assert calcular_disponivel(total_t2, t4) == 2  # Garante que houve rollback
+        assert calcular_disponivel(total_t2, t4) == 2  # Garante que houve rollback (saldo intacto)
         print(colorir_status(f"     {msg}"))
     print("     Rollback confirmado: o estado permaneceu inalterado.")
 
-    # T5 (Estado do T2, requisição: C pede 2)
+    # T5 (Estado do T2, requisição: C pede 2 -> C completa 4/4, conclui e devolve recursos -> CONCEDIDA)
     print()
     print(estilizar("[T5] Requisição: REQ C 2", NEGRITO, CIANO))
     t5 = copy.deepcopy(t2)
@@ -580,7 +705,12 @@ def executar_testes() -> None:
     )
 
 
+# =============================================================================
+# 5. PONTO DE ENTRADA (INTERFACE DE LINHA DE COMANDO)
+# =============================================================================
+
 def main() -> None:
+    """Configura os argumentos de linha de comando e escolhe o modo de execução."""
     parser = argparse.ArgumentParser(
         description="Simulador do Algoritmo do Banqueiro (Trabalho 3)."
     )
@@ -592,6 +722,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # Se o usuário passou --testes (ou -t), roda apenas a bateria obrigatória T1–T5
     if args.testes:
         imprimir_secao(
             "  ALGORITMO DO BANQUEIRO - TESTES T1 A T5",
@@ -601,6 +732,7 @@ def main() -> None:
         executar_testes()
         return
 
+    # Caso contrário, roda a demonstração comparativa completa (Banqueiro x FCFS)
     executar_comparacao()
 
 
